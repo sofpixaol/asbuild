@@ -63,5 +63,5 @@ jobs:
       with:
         name: aseprite
         path: |
-          D:/a/aseprite/asbuild/build/bin/data
-          D:/a/aseprite/asbuild/build/bin/aseprite.exe
+          D:/a/asbuild/asbuild/build/bin/data
+          D:/a/asbuild/asbuild/build/bin/aseprite.exe
