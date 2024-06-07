@@ -1,5 +1,5 @@
 # Aseprite
-# Copyright (C) 2019-2022  Igara Studio S.A.
+# Copyright (C) 2019-2024  Igara Studio S.A.
 # Copyright (C) 2001-2018  David Capello
 
 ######################################################################
@@ -95,12 +95,6 @@ set(OBSERVABLE_TESTS OFF CACHE BOOL "Compile observable tests")
 add_subdirectory(observable)
 include_directories(observable)
 
-# Disable clip examples and tests
-set(CLIP_EXAMPLES OFF CACHE BOOL "Compile clip examples")
-set(CLIP_TESTS OFF CACHE BOOL "Compile clip tests")
-set(CLIP_X11_PNG_LIBRARY "${PNG_LIBRARY}")
-add_subdirectory(clip)
-
 # Disable undo tests
 set(UNDO_TESTS OFF CACHE BOOL "Compile undo tests")
 add_subdirectory(undo)
@@ -123,6 +117,10 @@ if(REQUIRE_CURL)
   add_subdirectory(net)
 endif()
 
+# We need the updater library to check for updates (when
+# ENABLE_UPDATER) or for the app.os object (ENABLE_SCRIPTING).
+add_subdirectory(updater)
+
 if(GEN_EXE)
   add_executable(gen IMPORTED)
   set_target_properties(gen PROPERTIES IMPORTED_LOCATION ${GEN_EXE})
@@ -131,10 +129,6 @@ else()
   add_subdirectory(gen)
   set(GEN_EXE ${CMAKE_BINARY_DIR}/bin/gen)
   set(GEN_DEP gen)
-endif()
-
-if(ENABLE_UPDATER)
-  add_subdirectory(updater)
 endif()
 
 if(ENABLE_STEAM)
@@ -148,9 +142,34 @@ endif()
 add_subdirectory(app)
 
 ######################################################################
-# Copy data/ directory target
+# Output bin/data/ directory where we are going to copy data files
 
 set(DATA_OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/data)
+
+######################################################################
+# Clone "strings" repo with translations into bin/data/strings.git
+
+include(FetchContent)
+
+find_package(Git)
+if(GIT_FOUND)
+  FetchContent_Declare(
+    clone_strings
+    GIT_REPOSITORY    https://github.com/aseprite/strings.git
+    GIT_TAG           origin/main
+    SOURCE_DIR        ${DATA_OUTPUT_DIR}/strings.git
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ""
+    INSTALL_COMMAND   ""
+    TEST_COMMAND      "")
+  FetchContent_MakeAvailable(clone_strings)
+  add_custom_target(clone_strings DEPENDS clone_strings)
+else()
+  add_custom_target(clone_strings)
+endif()
+
+######################################################################
+# Copy data/ directory target into bin/data/
 
 file(GLOB_RECURSE src_data_files
   RELATIVE ${SOURCE_DATA_DIR}/ "${SOURCE_DATA_DIR}/*.*")
@@ -161,6 +180,17 @@ foreach(fn ${src_data_files})
     MAIN_DEPENDENCY ${SOURCE_DATA_DIR}/${fn})
   list(APPEND out_data_files ${DATA_OUTPUT_DIR}/${fn})
 endforeach()
+
+if(GIT_FOUND)
+  # Copy original en.ini to strings.git/en.ini to keep it updated. We
+  # have to manually sync the "en.ini" file in the "strings" repo from
+  # the "aseprite" repo.
+  add_custom_command(
+    OUTPUT ${DATA_OUTPUT_DIR}/strings.git/en.ini
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SOURCE_DATA_DIR}/strings/en.ini ${DATA_OUTPUT_DIR}/strings.git/en.ini
+    MAIN_DEPENDENCY ${SOURCE_DATA_DIR}/strings/en.ini)
+  list(APPEND out_data_files ${DATA_OUTPUT_DIR}/strings.git/en.ini)
+endif()
 
 add_custom_command(
   OUTPUT ${DATA_OUTPUT_DIR}/README.md
@@ -180,7 +210,7 @@ add_custom_command(
   MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/../docs/LICENSES.md)
 list(APPEND out_data_files ${DATA_OUTPUT_DIR}/docs/LICENSES.md)
 
-add_custom_target(copy_data DEPENDS ${out_data_files})
+add_custom_target(copy_data DEPENDS clone_strings ${out_data_files})
 
 ######################################################################
 # Aseprite application
